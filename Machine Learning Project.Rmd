@@ -1,0 +1,128 @@
+---
+title: "Machine Learning Project"
+author: "Josh Keeling"
+date: "November 8, 2014"
+output: html_document
+---
+### Introduction
+
+This analysis looks at the weight lifting dataset provided by the Human Activity Recognition project (http://groupware.les.inf.puc-rio.br/har). This dataset contains acceleerometer on various locations on participants lifting dumbbells. The purpose of this analysis is to recognize the manner in which the participant is lifting the barbell to see if we can accurately predict whether the weight lifting is being done properly or not.
+
+```{r, echo=FALSE}
+setwd("/Users/joshuakeeling/Desktop/Mog Bog/Doing Data Science/Machine Learning")
+```
+### Data Processing
+
+We begin the analysis by importing both the training and test datasets. The full training dataset contains 19,622 observations across 160 variables. The test set contains an additional 20 observations. 
+
+```{r}
+require(caret)
+test <- read.csv("pml-testing.csv",stringsAsFactors = FALSE)
+test$problem_id <- as.factor(test$problem_id)
+
+fullTrain <- read.csv("pml-training.csv",stringsAsFactors = FALSE)
+fullTrain$classe <- as.factor(fullTrain$classe )
+```
+
+We then drop out variables that won't be useful for analysis. Namely, the id and timestamp variables which are merely identifiers of the activity recorded and have no external vailidiy. We also convert the "yes/no" variable (new_window) to a 0/1 dummy.
+
+```{r}
+leanTrain <- fullTrain[,-1:-5] 
+leanTrain$new_window <- ifelse(leanTrain$new_window == "no",0,1)
+```
+
+There are multiple cases where there are blanks and "#DIV/0" values that caused numeric values to come in as character. These appear to come from some Excel calcualtions gone wrong. We convert them to numeric here.
+
+```{r}
+charVars <- sapply(leanTrain[1,],is.character)
+leanTrain[,charVars] <- lapply(leanTrain[,charVars],as.numeric)
+```
+
+Now we remove variables where the data are missing for more than 50% of values, as these are unlikely to provide value to the analysis. We also replicate the processing steps for the test set.
+
+```{r}
+naFlag <- sapply(leanTrain, function(x) sum(is.na(x))/length(x)) >.5
+leanTrain <- leanTrain[,-which(naFlag)]
+
+leanTest <- test[,-1:-5] 
+leanTest$new_window <- ifelse(leanTest$new_window == "no",0,1)
+charVars <- sapply(leanTest[1,],is.character)
+leanTest[,charVars] <- lapply(leanTest[,charVars],as.numeric)
+naFlag <- sapply(leanTest, function(x) sum(is.na(x))/length(x)) >.5
+leanTest <- leanTest[,-which(naFlag)]
+
+```
+
+The analysis datasets now have 55 variables; quite trimmed down from the originals.
+
+### Machine Learning Analysis
+
+We then create a validaton dataset to test our model against. Given that we do not have known values for the final test set, this dataset is necessary to quantify the likely out-of-sample error of our model. We use a 75/25 split here. A quick check shows that values of the dependent variable are comparable between the sets.
+
+```{r}
+set.seed(15)
+inTrain <- createDataPartition(leanTrain$classe, p = 3/4)[[1]]
+
+train <- leanTrain[inTrain,]
+validation <- leanTrain[-inTrain,]
+
+summary(train$classe)/length(train$classe)
+summary(validation$classe)/length(validation$classe)
+```
+
+In order to lesssen the computational burden and maintain model parsimony, we prepocess the data. We scale and center the data as well as performing Box-Cox transformations to minimize the impact of outliers. We then use principal components analysis to reduce the number of explanatory variables. We use a threshold of 80% variance explained, yielding 13 components. As shown in the plot below, the first seven components explain the bulk of the variance in the data.
+
+Transformations are done to all three data sets, using the preprocessing object calculated from the training set.
+
+```{r}
+yIndex <- length(names(train))
+preproc <- preProcess(train[,-yIndex], method=c("pca","center","scale","BoxCox"),thresh=0.8)
+
+preproc
+
+#This code is a lot of trouble just to see the PCA output (have to use prcomp)
+preprocNoPCA <-preproc <- preProcess(train[,-yIndex], method=c("center","scale","BoxCox"))
+plot(prcomp(predict(preprocNoPCA,train[,-yIndex],),center=FALSE), type="l",main="Principal Components")
+
+
+trainPC <- predict(preproc,train[-yIndex])
+validationPC <- predict(preproc,validation[-yIndex])
+testPC <- predict(preproc,leanTest[-yIndex])
+```
+
+We then estimate the model parameters. Here we use a random forest, estimated on the training set. Parameters are optimized using a single-fold, 75/25 cross-validation. Other model forms (trees, boosting, and Naive Bayes) were used in initial runs, but yielded much less fruitful results. Confusion matrices from these runs are given in the appendix.
+
+```{r cache=TRUE}
+tc <- trainControl(method="cv")
+
+modelPCARF <- train(train$classe ~ .,data=trainPC, method="rf",trControl=tc)
+plot(modelPCARF)
+```
+
+```{r}
+confusion <- confusionMatrix(validation$classe,predict(modelPCARF,validationPC))
+confusion
+
+ggplot(data=data.frame(confusion$table)) + geom_tile(aes(x=Prediction, y=Reference, fill=Freq)) + labs(fill="Frequency") + scale_fill_gradient(breaks=seq(from=0, to=1500, by=300)) 
+```
+
+As seen in the plot above, the model does a very good job of classifying in the validation data set. According to the confusion matrix analysis, the estimated out-of-sample accuracy is quite high at approximately 97% overall. This is signficantly higher than the no information rate of 28%. 
+
+These results seem to indicate a well-behaved model. This was further confirmed in the test set, where all 20 observations were correctly classified.
+
+
+### Appendix: Alternative Model Outputs
+
+This section provides outputs from fitting of basic tree, boosted, and Naive Bayes models. As seen in the summaries below, these models underperformed substantially when compared to the random forest model.
+
+```{r}
+#modelPCATree <- train(train$classe ~ .,data=trainPC, method="rpart",trControl=tc)
+confusionMatrix(validation$classe,predict(modelPCATree,validationPC))
+
+#modelPCABoost <- train(train$classe ~ .,data=trainPC, method="gbm",trControl=tc)
+confusionMatrix(validation$classe,predict(modelPCABoost,validationPC))
+
+#modelPCANB <- train(train$classe ~ .,data=trainPC, method="nb",trControl=tc)
+confusionMatrix(validation$classe,predict(modelPCANB,validationPC))
+```
+
