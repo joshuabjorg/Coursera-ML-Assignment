@@ -1,12 +1,12 @@
 ---
 title: "Machine Learning Project"
-author: "Josh Keeling"
+author: "JKeeling"
 date: "November 8, 2014"
 output: html_document
 ---
 ### Introduction
 
-This analysis looks at the weight lifting dataset provided by the Human Activity Recognition project (http://groupware.les.inf.puc-rio.br/har). This dataset contains acceleerometer on various locations on participants lifting dumbbells. The purpose of this analysis is to recognize the manner in which the participant is lifting the barbell to see if we can accurately predict whether the weight lifting is being done properly or not.
+This analysis looks at the weight lifting dataset provided by the Human Activity Recognition project (http://groupware.les.inf.puc-rio.br/har). This dataset contains accelerometer on various locations on participants lifting dumbbells. The purpose of this analysis is to recognize the manner in which the participant is lifting the barbell to see if we can accurately predict whether the weight lifting is being done properly or not.
 
 ```{r, echo=FALSE}
 setwd("/Users/joshuakeeling/Desktop/Mog Bog/Doing Data Science/Machine Learning")
@@ -90,7 +90,7 @@ validationPC <- predict(preproc,validation[-yIndex])
 testPC <- predict(preproc,leanTest[-yIndex])
 ```
 
-We then estimate the model parameters. Here we use a random forest, estimated on the training set. Parameters are optimized using a single-fold, 75/25 cross-validation. Other model forms (trees, boosting, and Naive Bayes) were used in initial runs, but yielded much less fruitful results. Confusion matrices from these runs are given in the appendix.
+We then estimate the model parameters. Here we use a random forest, estimated on the training set. Parameters are optimized using a single-fold, 75/25 cross-validation. Other model forms (trees, boosting, and Naive Bayes) were used in initial runs, but yielded much less fruitful results. For brevity (and out of concern for computing power), those results are not included here.
 
 ```{r cache=TRUE}
 tc <- trainControl(method="cv")
@@ -109,20 +109,3 @@ ggplot(data=data.frame(confusion$table)) + geom_tile(aes(x=Prediction, y=Referen
 As seen in the plot above, the model does a very good job of classifying in the validation data set. According to the confusion matrix analysis, the estimated out-of-sample accuracy is quite high at approximately 97% overall. This is signficantly higher than the no information rate of 28%. 
 
 These results seem to indicate a well-behaved model. This was further confirmed in the test set, where all 20 observations were correctly classified.
-
-
-### Appendix: Alternative Model Outputs
-
-This section provides outputs from fitting of basic tree, boosted, and Naive Bayes models. As seen in the summaries below, these models underperformed substantially when compared to the random forest model.
-
-```{r}
-#modelPCATree <- train(train$classe ~ .,data=trainPC, method="rpart",trControl=tc)
-confusionMatrix(validation$classe,predict(modelPCATree,validationPC))
-
-#modelPCABoost <- train(train$classe ~ .,data=trainPC, method="gbm",trControl=tc)
-confusionMatrix(validation$classe,predict(modelPCABoost,validationPC))
-
-#modelPCANB <- train(train$classe ~ .,data=trainPC, method="nb",trControl=tc)
-confusionMatrix(validation$classe,predict(modelPCANB,validationPC))
-```
-
